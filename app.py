@@ -1,5 +1,7 @@
 import streamlit as st
 import speech_recognition as sr
+import sounddevice as sd
+import numpy as np
 import requests
 import json
 import os
@@ -34,6 +36,50 @@ LANGUAGE_CODES = {
     "Russian": "ru"
 }
 
+class SoundDeviceSource:
+    """
+    Custom audio source for speech_recognition using sounddevice
+    """
+    def __init__(self, device_index=None, sample_rate=16000, chunk_size=1024):
+        self.device_index = device_index
+        self.sample_rate = sample_rate
+        self.chunk_size = chunk_size
+        self.audio_data = []
+        
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+        
+    def record(self, duration=5):
+        """
+        Record audio for specified duration
+        """
+        try:
+            # Record audio
+            audio_data = sd.rec(
+                int(duration * self.sample_rate),
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype=np.float32,
+                device=self.device_index
+            )
+            sd.wait()  # Wait for recording to complete
+            
+            # Convert to the format expected by speech_recognition
+            # Convert float32 to int16
+            audio_int16 = (audio_data * 32767).astype(np.int16)
+            
+            return sr.AudioData(
+                audio_int16.tobytes(),
+                self.sample_rate,
+                2  # 2 bytes per sample for int16
+            )
+            
+        except Exception as e:
+            raise sr.RequestError(f"Could not record audio: {e}")
+
 def check_remote_config():
     """
     Check remote configuration for kill switch
@@ -55,28 +101,41 @@ def check_remote_config():
         st.warning(f"Could not fetch remote config: {str(e)}. Running in local mode.")
         return True, "Service running normally."
 
-def speech_to_text():
+def get_available_devices():
     """
-    Convert speech to text using speech_recognition library
+    Get list of available audio input devices
+    """
+    try:
+        devices = sd.query_devices()
+        input_devices = []
+        for i, device in enumerate(devices):
+            if device['max_input_channels'] > 0:
+                input_devices.append((i, device['name']))
+        return input_devices
+    except Exception:
+        return [(None, "Default Device")]
+
+def speech_to_text(device_index=None, duration=5):
+    """
+    Convert speech to text using speech_recognition library with sounddevice
     """
     recognizer = sr.Recognizer()
     
     try:
-        with sr.Microphone() as source:
-            st.info("🎤 Listening... Speak now!")
-            # Adjust for ambient noise
-            recognizer.adjust_for_ambient_noise(source, duration=1)
-            # Listen for audio with timeout
-            audio = recognizer.listen(source, timeout=10, phrase_time_limit=30)
-            
+        # Use custom sounddevice source
+        source = SoundDeviceSource(device_index=device_index)
+        
+        st.info(f"🎤 Recording for {duration} seconds... Speak now!")
+        
+        # Record audio
+        audio = source.record(duration=duration)
+        
         st.info("🔄 Processing speech...")
+        
         # Use Google Speech Recognition
         text = recognizer.recognize_google(audio)
         return text
     
-    except sr.WaitTimeoutError:
-        st.error("⏰ Listening timeout. Please try again.")
-        return None
     except sr.UnknownValueError:
         st.error("🤷 Could not understand the audio. Please speak clearly.")
         return None
@@ -150,6 +209,32 @@ def main():
     if 'translated_text' not in st.session_state:
         st.session_state.translated_text = ""
     
+    # Audio device selection (in sidebar)
+    with st.sidebar:
+        st.header("🎤 Audio Settings")
+        
+        # Get available devices
+        devices = get_available_devices()
+        device_options = [f"{name}" for idx, name in devices]
+        device_indices = [idx for idx, name in devices]
+        
+        selected_device_name = st.selectbox(
+            "Select microphone:",
+            device_options,
+            index=0
+        )
+        
+        selected_device_index = device_indices[device_options.index(selected_device_name)]
+        
+        # Recording duration
+        recording_duration = st.slider(
+            "Recording duration (seconds):",
+            min_value=3,
+            max_value=30,
+            value=5,
+            step=1
+        )
+    
     # Language selection
     col1, col2 = st.columns(2)
     
@@ -182,7 +267,10 @@ def main():
         # Voice input button
         if st.button("🎤 Start Recording", type="primary", use_container_width=True):
             with st.spinner("Recording and processing..."):
-                text = speech_to_text()
+                text = speech_to_text(
+                    device_index=selected_device_index,
+                    duration=recording_duration
+                )
                 if text:
                     st.session_state.original_text = text
                     st.success("✅ Speech captured successfully!")
