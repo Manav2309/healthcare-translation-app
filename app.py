@@ -10,6 +10,14 @@ from io import BytesIO
 import time
 from llm_config import openrouter_config
 
+# Check if PyAudio is available
+try:
+    import pyaudio
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
+    st.warning("⚠️ Audio recording not available in this deployment environment. You can still use text input for translation.")
+
 # Page configuration
 st.set_page_config(
     page_title="Healthcare Translation App",
@@ -59,6 +67,10 @@ def speech_to_text():
     """
     Convert speech to text using speech_recognition library
     """
+    if not PYAUDIO_AVAILABLE:
+        st.error("❌ Audio recording is not available in this deployment environment. Please use text input instead.")
+        return None
+        
     recognizer = sr.Recognizer()
     
     try:
@@ -179,17 +191,20 @@ def main():
     with col1:
         st.subheader(f"📝 Original Text ({source_lang})")
         
-        # Voice input button
-        if st.button("🎤 Start Recording", type="primary", use_container_width=True):
-            with st.spinner("Recording and processing..."):
-                text = speech_to_text()
-                if text:
-                    st.session_state.original_text = text
-                    st.success("✅ Speech captured successfully!")
+        # Voice input button - conditional based on PyAudio availability
+        if PYAUDIO_AVAILABLE:
+            if st.button("🎤 Start Recording", type="primary", use_container_width=True):
+                with st.spinner("Recording and processing..."):
+                    text = speech_to_text()
+                    if text:
+                        st.session_state.original_text = text
+                        st.success("✅ Speech captured successfully!")
+        else:
+            st.info("💡 Audio recording is not available in this deployment. Please use the text input below.")
         
         # Text input area
         original_text = st.text_area(
-            "Or type your text here:",
+            "Type your text here:",
             value=st.session_state.original_text,
             height=200,
             key="original_input"
