@@ -1,0 +1,11 @@
+{
+  "active": true,
+  "message": "Service running normally.",
+  "version": "1.0.0",
+  "maintenance_mode": false,
+  "supported_languages": [
+    "English", "Spanish", "French", "German", "Italian", 
+    "Portuguese", "Chinese", "Japanese", "Korean", "Arabic", 
+    "Hindi", "Russian"
+  ]
+}
