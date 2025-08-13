@@ -2,4 +2,3 @@ portaudio19-dev
 libasound2-dev
 ffmpeg
 libportaudio2
-pulseaudio
