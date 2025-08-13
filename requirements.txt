@@ -4,4 +4,5 @@ gTTS>=2.4.0
 requests>=2.31.0
 python-dotenv>=1.0.0
 sounddevice>=0.4.9
+numpy>=1.21.0
 openai>=1.0.0
