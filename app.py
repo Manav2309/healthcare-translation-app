@@ -10,14 +10,6 @@ from io import BytesIO
 import time
 from llm_config import openrouter_config
 
-# Check if PyAudio is available
-try:
-    import pyaudio
-    PYAUDIO_AVAILABLE = True
-except ImportError:
-    PYAUDIO_AVAILABLE = False
-    st.warning("⚠️ Audio recording not available in this deployment environment. You can still use text input for translation.")
-
 # Page configuration
 st.set_page_config(
     page_title="Healthcare Translation App",
@@ -63,32 +55,29 @@ def check_remote_config():
         st.warning(f"Could not fetch remote config: {str(e)}. Running in local mode.")
         return True, "Service running normally."
 
-def speech_to_text():
+def audio_to_text(audio_bytes):
     """
-    Convert speech to text using speech_recognition library
+    Convert audio bytes to text using speech_recognition library
     """
-    if not PYAUDIO_AVAILABLE:
-        st.error("❌ Audio recording is not available in this deployment environment. Please use text input instead.")
-        return None
-        
     recognizer = sr.Recognizer()
     
     try:
-        with sr.Microphone() as source:
-            st.info("🎤 Listening... Speak now!")
-            # Adjust for ambient noise
-            recognizer.adjust_for_ambient_noise(source, duration=1)
-            # Listen for audio with timeout
-            audio = recognizer.listen(source, timeout=10, phrase_time_limit=30)
-            
-        st.info("🔄 Processing speech...")
+        # Create a temporary file to store the audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+            tmp_file.write(audio_bytes)
+            tmp_file_path = tmp_file.name
+        
+        # Use the audio file with speech recognition
+        with sr.AudioFile(tmp_file_path) as source:
+            audio = recognizer.record(source)
+        
+        # Clean up the temporary file
+        os.unlink(tmp_file_path)
+        
         # Use Google Speech Recognition
         text = recognizer.recognize_google(audio)
         return text
     
-    except sr.WaitTimeoutError:
-        st.error("⏰ Listening timeout. Please try again.")
-        return None
     except sr.UnknownValueError:
         st.error("🤷 Could not understand the audio. Please speak clearly.")
         return None
@@ -191,20 +180,23 @@ def main():
     with col1:
         st.subheader(f"📝 Original Text ({source_lang})")
         
-        # Voice input button - conditional based on PyAudio availability
-        if PYAUDIO_AVAILABLE:
-            if st.button("🎤 Start Recording", type="primary", use_container_width=True):
-                with st.spinner("Recording and processing..."):
-                    text = speech_to_text()
+        # Audio input using Streamlit's native audio_input
+        st.markdown("**🎤 Record Audio:**")
+        audio_bytes = st.audio_input("Record your voice", key="audio_input")
+        
+        if audio_bytes is not None:
+            st.audio(audio_bytes, format="audio/wav")
+            
+            if st.button("🔄 Convert Audio to Text", type="secondary", use_container_width=True):
+                with st.spinner("Processing audio..."):
+                    text = audio_to_text(audio_bytes.getvalue())
                     if text:
                         st.session_state.original_text = text
-                        st.success("✅ Speech captured successfully!")
-        else:
-            st.info("💡 Audio recording is not available in this deployment. Please use the text input below.")
+                        st.success(f"✅ Audio converted: {text}")
         
         # Text input area
         original_text = st.text_area(
-            "Type your text here:",
+            "Or type your text here:",
             value=st.session_state.original_text,
             height=200,
             key="original_input"
