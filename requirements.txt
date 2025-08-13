@@ -8,4 +8,5 @@ numpy>=1.21.0
 openai>=1.0.0
 streamlit-webrtc>=0.44.0
 pydub
-PyAudio>=0.2.11; sys_platform == "win32" or sys_platform == "darwin"
+# PyAudio - optional for cloud deployments
+PyAudio>=0.2.11; platform_system != "Linux"
